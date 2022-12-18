@@ -1,0 +1,149 @@
+---
+title: "Random Forest Modeling Script"
+author: "Ted Zerbe"
+date: "December 19, 2022"
+---
+
+## Front Matter
+
+```{r, message=FALSE}
+# clear environment
+rm(list = ls())
+
+# load packages
+library(tidyverse)
+library(tidymodels)
+library(ranger)
+library(doParallel)
+```
+
+```{r}
+# read in data
+training <- read.csv("training.csv")
+```
+
+## Data Preparation
+
+```{r, warning=FALSE}
+# convert SpinRate to numeric
+training <- training %>%
+            mutate(SpinRate = as.numeric(SpinRate))
+```
+
+```{r}
+# convert InPlay to factor
+training <- training %>%
+            mutate(InPlay = as.factor(InPlay))
+```
+
+```{r}
+# remove 6 rows with missing values
+training <- training %>%
+            drop_na()
+```
+
+```{r}
+# inspect data
+glimpse(training)
+```
+
+## Modeling
+
+```{r}
+# create model specification
+rand_forest_spec <- rand_forest(mtry = tune(),
+                                trees = tune(),
+                                min_n = tune()) %>%
+                    set_mode("classification") %>%
+                    set_engine("ranger", importance = "impurity")
+rand_forest_spec
+
+#args(rand_forest)
+```
+
+```{r}
+# create model recipe to preprocess data
+rand_forest_rec <- recipe(InPlay ~ ., data = training)
+
+rand_forest_rec
+```
+
+```{r}
+# create regular grid of values for tuning
+rand_forest_grid <- grid_regular(mtry(range = c(1, 24)),
+                                 trees(),
+                                 min_n(),
+                                 levels = 5)
+rand_forest_grid
+```
+
+```{r}
+# view values in grid
+rand_forest_grid %>% count(trees) # change hyperparameter to view its tested values
+```
+
+```{r}
+set.seed(1993)
+
+# create cross-validation folds
+folds <- vfold_cv(training, v = 5, strata = InPlay)
+glimpse(folds)
+
+# create validation set
+val <- validation_split(training, strata = InPlay, prop = 0.80)
+glimpse(val)
+```
+
+```{r, warning=FALSE}
+# create workflow and tune along grid
+all_cores <- parallel::detectCores()
+cl <- makePSOCKcluster(all_cores)
+registerDoParallel(cl)
+
+set.seed(1993)
+
+rand_forest_wf <- workflow() %>%
+                  add_model(rand_forest_spec) %>%
+                  add_recipe(rand_forest_rec)
+
+rand_forest_res <- rand_forest_wf %>%
+                   tune_grid(resamples = val, 
+                             grid = rand_forest_grid,
+                             control = control_grid(save_pred = TRUE),
+                             metrics = metric_set(roc_auc))
+
+stopCluster(cl)
+```
+
+```{r}
+# collect cv results
+
+# rand_forest_res %>% collect_predictions()
+rand_forest_res %>% collect_metrics()
+rand_forest_res %>% show_best("roc_auc")
+
+# saveRDS(rand_forest_res, 'rand_forest_res.RDS')
+```
+
+```{r}
+# select best hyperparameters
+best_rand_forest <- rand_forest_res %>%
+                    select_best("roc_auc")
+best_rand_forest
+```
+
+```{r}
+# visualize model cv performance
+rand_forest_auc <- rand_forest_res %>%
+                   collect_predictions(parameters = best_rand_forest) %>%
+                   roc_curve(InPlay, .pred_0) %>%
+                   mutate(model = "Random Forest")
+autoplot(rand_forest_auc)
+```
+
+```{r}
+config <- best_rand_forest$.config
+
+rand_forest_metric <- rand_forest_res %>% collect_metrics()
+rand_forest_metric[rand_forest_metric$.config == config,]
+```

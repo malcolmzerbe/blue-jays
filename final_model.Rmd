@@ -1,0 +1,192 @@
+---
+title: "Final Modeling Script"
+author: "Ted Zerbe"
+date: "December 19, 2022"
+output:
+  html_document:
+    df_print: paged
+---
+
+## Front Matter
+
+```{r, message=FALSE}
+# clear environment
+rm(list = ls())
+
+# load packages
+library(tidyverse)
+library(tidymodels)
+library(glmnet)
+library(car)
+```
+
+```{r}
+# read in data
+training <- read.csv("training.csv")
+deploy <- read.csv("deploy.csv")
+```
+
+## Data Preparation
+
+```{r, warning=FALSE}
+# convert SpinRate to numeric
+training <- training %>%
+            mutate(SpinRate = as.numeric(SpinRate))
+
+deploy <- deploy %>%
+          mutate(SpinRate = as.numeric(SpinRate))
+```
+
+```{r}
+# convert InPlay to factor
+training <- training %>%
+            mutate(InPlay = as.factor(InPlay))
+```
+
+```{r}
+# remove 6 rows with missing values
+training <- training %>%
+            drop_na()
+```
+
+```{r}
+# inspect data
+glimpse(training)
+glimpse(deploy)
+```
+
+## Modeling
+
+```{r}
+# create model specification
+final_spec <- logistic_reg(penalty = 1,
+                           mixture = 0) %>%
+              set_mode("classification") %>%
+              set_engine("glm")
+final_spec
+
+#args(logistic_reg)
+```
+
+```{r}
+# create model recipe to preprocess data
+final_rec <- recipe(InPlay ~ ., data = training)
+
+final_rec
+```
+
+```{r}
+# create workflow
+final_wf <- workflow() %>%
+            add_model(final_spec) %>%
+            add_recipe(final_rec)
+```
+
+```{r}
+# fit model on all train data
+set.seed(1993)
+
+final_fit <- final_wf %>%
+             fit(data = training)
+```
+
+```{r}
+# view model coefficients
+tidy(final_fit)
+```
+
+```{r}
+# another way to fit final model
+final_fit2 <- glm(InPlay ~ Velo + SpinRate + HorzBreak + InducedVertBreak, family = binomial, data = training)
+summary(final_fit2)
+```
+
+```{r}
+# view predictions
+test_results <- augment(final_fit, deploy)
+test_results
+```
+
+```{r}
+# create csv of predictions for chance of pitch being put in play
+test_results <- test_results %>%
+                dplyr::select(.pred_1) %>%
+                rename(prob = .pred_1)
+
+write.csv(test_results, 'q1.csv')
+```
+
+```{r}
+# extract final fitted workflow (recipe + model) for future use
+# saveRDS(final_fit, 'final_fit.model')
+```
+
+## Interpretations
+
+To make sure that these predictors make significant contributions to predicting the probability that a fastball is put in play, and I will perform a drop-in-deviance test between the model including Velo, SpinRate, HorzBreak, and InducedVertBreak and the intercept-only model.
+
+```{r}
+# fit intercept-only model
+int_model <- glm(InPlay ~ 1, family = binomial, data = training)
+summary(int_model)
+
+# drop in deviance test between full and fip models
+dropInDev <- int_model$deviance - final_fit2$deviance
+pVal <- 1 - pchisq(dropInDev, 4)
+
+dropInDev
+pVal
+```
+
+H0: Reduced model (intercept only)
+
+Ha: Full model (including Velo, SpinRate, HorzBreak, and InducedVertBreak)
+
+Test statistic: 113.7159
+
+p-value: basically 0
+
+Conclusion: With an extremely small p-value, we reject the null hypothesis that the reduced model is better than the full model. Velo, SpinRate, HorzBreak, and InducedVertBreak should be included in the model.
+
+I will also check to make sure there is no issue with multicollinearity, which could lead to issues. The contributions of the variables may overlap too much and create issues with individual coefficients and t-tests, making them deceptive and unreliable.
+
+```{r}
+vif(final_fit2)
+```
+
+The variance inflation factors associated with each predictor are very low, much lower than any worrisome value. I can conclude that multicollinearity is not an issue.
+
+I will now going to interpret the model coefficients.
+
+```{r}
+summary(final_fit2)
+```
+
+As velocity increases by 1 mph, we expect the log odds of a fastball to be put in play to decrease by about 0.03 on average, holding spin rate, horizontal break, and vertical break constant.
+
+As spin rate increases by 1 rpm, we expect the log odds of a fastball to be put in play to decrease by about 0.0002 on average, holding velocity, horizontal break, and vertical break constant.
+
+As horizontal break increases by 1 inch, we expect the log odds of a fastball to be put in play to increase by about 0.014 on average, holding velocity, spin rate, and vertical break constant.
+
+As vertical break increases by 1 inch, we expect the log odds of a fastball to be put in play to decrease by about 0.03 on average, holding velocity, spin rate, and horizontal break constant.
+
+These interpretations are not intuitive as people don't think in terms of log odds. By exponentiating the coefficients, we can also look at the multiplicative effects of the predictors on the odds of a fastball being put in play.
+
+```{r}
+# effect of each predictor on odds of winning 90 games
+exp(-0.0313000)
+exp(-0.0002232)
+exp(0.0139893)
+exp(-0.0300675)
+```
+
+We expect the odds of a fastball being put in play to decrease by about 3.1% for every 1 mph increase in velocity, holding spin rate, horizontal break, and vertical break constant.
+
+We expect the odds of a fastball being put in play to decrease by about 0.03% for every 1 rpm increase in spin rate, holding velocity, horizontal break, and vertical break constant.
+
+We expect the odds of a fastball being put in play to increase by about 1.4% for every 1 inch increase in horizontal break, holding velocity, spin rate, and horizontal break constant.
+
+We expect the odds of a fastball being put in play to decrease by about 3% for every 1 inch increase in vertical break, holding velocity, spin rate, and horizontal break constant.
+
+
+

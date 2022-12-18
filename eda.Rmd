@@ -1,0 +1,357 @@
+---
+title: "Exploratory Data Analysis Script"
+author: "Ted Zerbe"
+date: "December 19, 2022"
+output:
+  html_document:
+    df_print: paged
+---
+
+## Front Matter
+
+```{r, message=FALSE}
+# clear environment
+rm(list = ls())
+
+# load packages
+library(tidyverse)
+library(ggcorrplot)
+```
+
+```{r}
+# read in data
+training <- read.csv("training.csv")
+```
+
+## Data Preparation
+
+```{r}
+# inspect data
+glimpse(training)
+```
+
+```{r}
+# inspect data
+head(training)
+```
+
+```{r}
+# check for missing values
+colSums(is.na(training))
+
+# check for NULL
+colSums(training == 'NULL')
+```
+
+SpinRate is a character variable and must be converted to a numeric variable.
+
+```{r, warning=FALSE}
+# convert SpinRate to numeric variable
+training <- training %>%
+            mutate(SpinRate = as.numeric(SpinRate))
+```
+
+```{r}
+# check for missing values
+colSums(is.na(training))
+```
+
+```{r}
+which(is.na(training$SpinRate))
+```
+
+```{r}
+# convert InPlay to factor
+training <- training %>%
+            mutate(InPlay = as.factor(InPlay))
+```
+
+```{r}
+# re-inspect data
+glimpse(training)
+```
+
+I will now explore this dataset with descriptive statistics and appropriate plots. 
+
+## Univariate Analysis
+
+### Quantitative
+
+```{r}
+# plot histogram
+ggplot(data = training, mapping = aes(x = Velo)) +
+  geom_histogram(color = 'black', fill = 'steelblue1') +
+  labs(x = 'Fastball Velocity')
+```
+
+```{r}
+# calculate mean and sd
+training %>%
+  summarise(meanVelo = mean(Velo),
+            sdVelo = sd(Velo))
+```
+
+```{r}
+# find min, 25th percentile, median, 75th percentile, and max
+fivenum(training$Velo)
+```
+
+```{r}
+# detect outliers
+
+# calculate IQR
+IQR_velo = 95.66 - 92.54
+
+# upper bound
+95.66 + (1.5 * IQR_velo)
+
+# lower bound
+92.54 - (1.5 * IQR_velo)
+```
+
+```{r}
+# visualize outliers
+ggplot(data = training, mapping = aes(y = Velo)) +
+  geom_boxplot()
+```
+
+Velocity is roughly normally distributed with a mean around 94 and a standard deviation of about 2.7. Values range between 102.4 and 59.76. There are a number of outliers to this distribution as well. The vast majority of them are on the lower tail.
+
+```{r}
+# plot histogram
+ggplot(data = training, mapping = aes(x = SpinRate)) +
+  geom_histogram(color = 'black', fill = 'steelblue1') +
+  labs(x = 'Fastball Spin Rate')
+```
+
+```{r}
+# calculate mean and sd
+training %>%
+  summarise(meanSpinRate = mean(SpinRate, na.rm = TRUE),
+            sdSpinRate = sd(SpinRate, na.rm = TRUE))
+```
+
+```{r}
+# find min, 25th percentile, median, 75th percentile, and max
+fivenum(training$SpinRate)
+```
+
+```{r}
+# detect outliers
+
+# calculate IQR
+IQR_spinrate = 2367 - 2107
+
+# upper bound
+2367 + (1.5 * IQR_spinrate)
+
+# lower bound
+2107 - (1.5 * IQR_spinrate)
+```
+
+```{r}
+# visualize outliers
+ggplot(data = training, mapping = aes(y = SpinRate)) +
+  geom_boxplot()
+```
+
+SpinRate is roughly normally distributed with a mean around 2239 and a standard deviation of about 196. Values range between 3061 and 770. There are a number of outliers to this distribution as well.
+
+```{r}
+# plot histogram
+ggplot(data = training, mapping = aes(x = HorzBreak)) +
+  geom_histogram(color = 'black', fill = 'steelblue1') +
+  labs(x = 'Fastball Horizontal Break')
+```
+
+```{r}
+# calculate mean and sd
+training %>%
+  summarise(meanHorzBreak = mean(HorzBreak),
+            sdHorzBreak = sd(HorzBreak))
+```
+
+```{r}
+# find min, 25th percentile, median, 75th percentile, and max
+fivenum(training$HorzBreak)
+```
+
+```{r}
+# detect outliers
+
+# calculate IQR
+IQR_horzbreak = 13.60 - 5.73
+
+# upper bound
+13.60 + (1.5 * IQR_horzbreak)
+
+# lower bound
+5.73 - (1.5 * IQR_horzbreak)
+```
+
+```{r}
+# visualize outliers
+ggplot(data = training, mapping = aes(y = HorzBreak)) +
+  geom_boxplot()
+```
+
+HorzBreak is roughly normally distributed with a mean around 9.5 and a standard deviation of about 5. Values range between 28.04 and -6.27. There are only two outliers in this distribution, one on each end.
+
+```{r}
+# plot histogram
+ggplot(data = training, mapping = aes(x = InducedVertBreak)) +
+  geom_histogram(color = 'black', fill = 'steelblue1') +
+  labs(x = 'Fastball Vertical Break')
+```
+
+```{r}
+# calculate mean and sd
+training %>%
+  summarise(meanVertBreak = mean(InducedVertBreak),
+            medianVertBreak = median(InducedVertBreak),
+            sdVertBreak = sd(InducedVertBreak))
+```
+
+```{r}
+# find min, 25th percentile, median, 75th percentile, and max
+fivenum(training$InducedVertBreak)
+```
+
+```{r}
+# detect outliers
+
+# calculate IQR
+IQR_vertbreak = 17.63 - 11.36
+
+# upper bound
+17.63 + (1.5 * IQR_vertbreak)
+
+# lower bound
+11.36 - (1.5 * IQR_vertbreak)
+```
+
+```{r}
+# visualize outliers
+ggplot(data = training, mapping = aes(y = InducedVertBreak)) +
+  geom_boxplot()
+```
+
+HorzBreak is roughly left-skewed with a median around 15 and a standard deviation of about 4.6. Values range between 24.86 and -6.82. There are a number of outliers to this distribution as well. All of the outliers are on the lower tail.
+
+### Categorical
+
+```{r}
+# create bar chart
+ggplot(data = training, mapping = aes(x = InPlay)) +
+  geom_bar(color = 'black', fill = 'steelblue1') +
+  labs(x = 'Fastball In Play?')
+```
+
+```{r}
+# create frequency and relative frequency table
+training %>%
+  group_by(InPlay) %>%
+  summarize(count = n(),
+            prop = n()/nrow(training))
+```
+
+Over 2700, or about 27%, fastballs in this dataset were put in play.
+
+## Bivariate Analysis
+
+Now we will explore the relationships between the variables.
+
+### Two Quantitative
+
+```{r}
+# make a dataset including only quantitative variables
+quant <- training %>%
+         select(-c(InPlay)) %>%
+         drop_na()
+
+# compute a correlation matrix
+corr <- round(cor(quant), 3)
+head(corr)
+```
+
+```{r}
+ggcorrplot(corr, hc.order = TRUE, type = "lower",
+     outline.col = "white")
+```
+
+The strongest linear correlation is between induced vertical break and horizontal break (-0.577).
+
+```{r}
+ggplot(data = training, mapping = aes(x = Velo, y = SpinRate)) +
+  geom_point() +
+  labs(x = 'Fastball Velocity', y = 'Fastball Spin Rate')
+```
+
+```{r}
+ggplot(data = training, mapping = aes(x = HorzBreak, y = InducedVertBreak)) +
+  geom_point() +
+  labs(x = 'Fastball Horizontal Break', y = 'Fastball Vertical Break')
+```
+
+### One Quantitative, One Categorical
+
+Now I will explore how the potential predictors relate to the target variable InPlay.
+
+```{r}
+ggplot(data = training, mapping = aes(x = InPlay, y = Velo)) +
+  geom_boxplot()
+```
+
+```{r}
+training %>%
+  group_by(InPlay) %>%
+  summarise(meanVelo = mean(Velo),
+            sdVelo = sd(Velo))
+```
+
+```{r}
+ggplot(data = training, mapping = aes(x = InPlay, y = SpinRate)) +
+  geom_boxplot()
+```
+
+```{r}
+training %>%
+  group_by(InPlay) %>%
+  summarise(meanSpinRate = mean(SpinRate, na.rm = TRUE),
+            sdSpinRate = sd(SpinRate, na.rm = TRUE))
+```
+
+```{r}
+ggplot(data = training, mapping = aes(x = InPlay, y = HorzBreak)) +
+  geom_boxplot()
+```
+
+```{r}
+training %>%
+  group_by(InPlay) %>%
+  summarise(meanHorzBreak = mean(HorzBreak),
+            sdHorzBreak = sd(HorzBreak))
+```
+
+```{r}
+ggplot(data = training, mapping = aes(x = InPlay, y = InducedVertBreak)) +
+  geom_boxplot()
+```
+
+```{r}
+training %>%
+  group_by(InPlay) %>%
+  summarise(meanVertBreak = mean(InducedVertBreak),
+            sdVertBreak = sd(InducedVertBreak))
+```
+
+```{r}
+training %>%
+  mutate(InPlay = ifelse(InPlay == 1, 'Yes', 'No')) %>%
+  group_by(InPlay) %>%
+  summarise(meanVelo = mean(Velo),
+            meanSpinRate = mean(SpinRate, na.rm = TRUE),
+            meanHorzBreak = mean(HorzBreak),
+            meanVertBreak = mean(InducedVertBreak))
+```
+

@@ -1,0 +1,151 @@
+---
+title: "Boosted Trees Modeling Script"
+author: "Ted Zerbe"
+date: "December 19, 2022"
+---
+
+## Front Matter
+
+```{r, message=FALSE}
+# clear environment
+rm(list = ls())
+
+# load packages
+library(tidyverse)
+library(tidymodels)
+library(xgboost)
+library(doParallel)
+```
+
+```{r}
+# read in data
+training <- read.csv("training.csv")
+```
+
+## Data Preparation
+
+```{r, warning=FALSE}
+# convert SpinRate to numeric
+training <- training %>%
+            mutate(SpinRate = as.numeric(SpinRate))
+```
+
+```{r}
+# convert InPlay to factor
+training <- training %>%
+            mutate(InPlay = as.factor(InPlay))
+```
+
+```{r}
+# remove 6 rows with missing values
+training <- training %>%
+            drop_na()
+```
+
+```{r}
+# inspect data
+glimpse(training)
+```
+
+## Modeling
+
+```{r}
+# create model specification
+boost_tree_spec <- boost_tree(mtry = tune(),
+                              trees = tune(),
+                              min_n = tune(),
+                              tree_depth = tune()) %>%
+                              #learn_rate = tune(),
+                              #loss_reduction = tune(),
+                              #sample_size = tune()) %>%
+                  set_mode("classification") %>%
+                  set_engine("xgboost")
+boost_tree_spec
+
+#args(boost_tree)
+```
+
+```{r}
+# create model recipe to preprocess data
+boost_tree_rec <- recipe(InPlay ~ ., data = training)
+
+boost_tree_rec
+```
+
+```{r}
+# create regular grid of values for tuning
+boost_tree_grid <- grid_regular(mtry(range = c(1, 5)),
+                                trees(),
+                                min_n(),
+                                tree_depth(),
+                                #learn_rate(),
+                                #loss_reduction(),
+                                #sample_size(range = c(#, #)),
+                                levels = 5)
+boost_tree_grid
+```
+
+```{r}
+# view values in grid
+boost_tree_grid %>% count(mtry) # change hyperparameter to view its tested values
+```
+
+```{r}
+set.seed(1993)
+
+# create cross-validation folds
+folds <- vfold_cv(training, v = 5, strata = InPlay)
+glimpse(folds)
+
+# create validation set
+val <- validation_split(training, strata = InPlay, prop = 0.80)
+glimpse(val)
+```
+
+```{r, warning=FALSE}
+# create workflow and tune along grid
+all_cores <- parallel::detectCores()
+cl <- makePSOCKcluster(all_cores)
+registerDoParallel(cl)
+
+set.seed(1993)
+
+boost_tree_wf <- workflow() %>%
+                 add_model(boost_tree_spec) %>%
+                 add_recipe(boost_tree_rec)
+
+boost_tree_res <- boost_tree_wf %>%
+                  tune_grid(resamples = val, 
+                            grid = boost_tree_grid,
+                            control = control_grid(save_pred = TRUE),
+                            metrics = metric_set(roc_auc))
+
+stopCluster(cl)
+```
+
+```{r}
+# collect cv results
+
+# boost_tree_res %>% collect_predictions()
+boost_tree_res %>% collect_metrics()
+boost_tree_res %>% show_best("roc_auc")
+
+# saveRDS(boost_tree_res, 'boost_tree_res.RDS')
+```
+
+```{r}
+# select best hyperparameters
+best_boost_tree <- boost_tree_res %>%
+                   select_best("roc_auc")
+best_boost_tree
+```
+
+```{r}
+# visualize model cv performance
+boost_tree_auc <- boost_tree_res %>%
+                  collect_predictions(parameters = best_boost_tree) %>%
+                  roc_curve(InPlay, .pred_0) %>%
+                  mutate(model = "Boosted Trees")
+autoplot(boost_tree_auc)
+```
+

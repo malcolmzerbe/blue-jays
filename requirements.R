@@ -1,0 +1,7 @@
+install.packages("tidyverse")
+install.packages("ggcorrplot")
+install.packages("tidymodels")
+install.packages("doParallel")
+install.packages("xgboost")
+install.packages("ranger")
+install.packages("car")
